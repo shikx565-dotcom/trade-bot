@@ -3,9 +3,6 @@ from discord.ext import commands, tasks
 import datetime
 import os
 
-# ==========================================
-# 1. الإعدادات والمعرفات
-# ==========================================
 TRACKER_CHANNEL_ID = 123456789012345678  # ضع أيدي القناة هنا
 MESSAGE_ID = None
 
@@ -22,16 +19,8 @@ class AnohaTradeBot(commands.Bot):
 
 bot = AnohaTradeBot()
 
-# ==========================================
-# 2. دالة جلب البيانات المستقرة
-# ==========================================
 def fetch_anoha_data():
-    try:
-        # ترتيب المراكز والأسماء والإيموجيات
-        return "🥇 **Reconnaissance** - 1122 Points\n🥈 **Ap** - 642 Points\n🥉 **Stall** - 750 Points"
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        return None
+    return "🥇 **Reconnaissance** - 1122 Points\n🥈 **Ap** - 642 Points\n🥉 **Stall** - 750 Points"
 
 def create_tracker_embed(ranking_data):
     embed = discord.Embed(
@@ -41,18 +30,10 @@ def create_tracker_embed(ranking_data):
         color=discord.Color.gold(),
         timestamp=datetime.datetime.utcnow()
     )
-    
-    if ranking_data:
-        embed.add_field(name="🏆 Top Players Ranking", value=ranking_data, inline=False)
-    else:
-        embed.add_field(name="⚠️ Status", value="Waiting for website data sync...", inline=False)
-        
+    embed.add_field(name="🏆 Top Players Ranking", value=ranking_data, inline=False)
     embed.set_footer(text="Auto-refreshed every 5 minutes • Stable Mode")
     return embed
 
-# ==========================================
-# 3. مهمة التحديث التلقائي كل 5 دقائق
-# ==========================================
 @tasks.loop(minutes=5)
 async def auto_update_tracker():
     global MESSAGE_ID
@@ -81,9 +62,5 @@ async def auto_update_tracker():
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (Stable & Ready!)")
-
-@bot.tree.command(name="ping", description="Test bot status")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("Bot is online and stable!")
 
 bot.run(os.getenv("BOT_TOKEN"))
