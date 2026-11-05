@@ -5,7 +5,7 @@ import os
 import requests
 from bs4 import BeautifulSoup  # مكتبة خفيفة جداً لتحليل الصفحة وسحب كل الجداول
 
-TRACKER_CHANNEL_ID = 123456789012345678  # ضع أيدي القناة هنا
+TRACKER_CHANNEL_ID = 1562105330370871407  # ضع أيدي القناة هنا
 MESSAGE_ID = None
 
 intents = discord.Intents.default()
