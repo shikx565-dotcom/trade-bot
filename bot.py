@@ -9,8 +9,7 @@ class AnohaTradeBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.default())
         self.scheduler = AsyncIOScheduler(timezone="Africa/Cairo")  # توقيت مصر
-        self.tree = app_commands.CommandTree(self)
-
+       
     async def setup_hook(self):
         await self.tree.sync()
         print("Successfully synced slash commands!")
