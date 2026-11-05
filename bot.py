@@ -1,98 +1,63 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import datetime
 import os
-import requests
-from bs4 import BeautifulSoup  # مكتبة خفيفة جداً لتحليل الصفحة وسحب كل الجداول
+import asyncio
+from aiohttp import web
 
-TRACKER_CHANNEL_ID = 1562105330370871407  # ضع أيدي القناة هنا
+TRACKER_CHANNEL_ID = 123456789012345678  # ضع أيدي القناة هنا
 MESSAGE_ID = None
 
 intents = discord.Intents.default()
 intents.message_content = True
 
-class AnohaTradeBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
+latest_rankings = []
 
-    async def setup_hook(self):
-        auto_update_tracker.start()
-        await self.tree.sync()
-
-bot = AnohaTradeBot()
-
-def fetch_anoha_data():
-    try:
-        url = "https://anoha-online.com/trademode"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # هنا بنبحث عن الجداول أو العناصر اللي فيها الترتيب والأسماء في الموقع
-            # (كمثال عام للبحث عن صفوف الجدول أو عناصر الترتيب)
-            rows = soup.find_all('tr') # أو التاج الخاص بالأسماء في الموقع
-            
-            rankings = []
-            medals = ["🥇", "🥈", "🥉"]
-            
-            count = 1
-            for row in rows:
-                cols = row.find_all('td')
-                if len(cols) >= 2:
-                    name = cols[0].text.strip()
-                    score = cols[1].text.strip()
-                    
-                    if count == 1:
-                        emoji = medals[0]
-                    elif count == 2:
-                        emoji = medals[1]
-                    elif count == 3:
-                        emoji = medals[2]
-                    else:
-                        emoji = f"{count}."
-                        
-                    rankings.append(f"{emoji} **{name}** - {score} Points")
-                    count += 1
-            
-            if rankings:
-                # ديسكورد بيقبل في الـ Embed الواحد لحد 1024 حرف في الـ Field، 
-                # فلو القائمة كبيرة هنقسمها أو نعرضها مرتبة
-                return "\n".join(rankings[:25]) # أول 25 لاعب كمرحلة أولى عشان ما نعديش حدود ديسكورد
-                
-        return "⚠️ Could not fetch live data automatically yet."
-    except Exception as e:
-        print(f"[ERROR] {e}")
-        return "⚠️ Error fetching data from website."
-
-def create_tracker_embed(ranking_data):
+def create_tracker_embed(rankings_list):
     embed = discord.Embed(
         title="📊 Trademode Ranking | Anoha Online",
         url="https://anoha-online.com/trademode",
-        description="Full live rankings fetched automatically. Click the title above to open the site!",
+        description="Complete live rankings updated via Chrome Extension. Click above to view site!",
         color=discord.Color.gold(),
         timestamp=datetime.datetime.utcnow()
     )
     
-    embed.add_field(name="🏆 All Players Ranking", value=ranking_data, inline=False)
-    embed.set_footer(text="Auto-refreshed every 5 minutes • Stable Mode")
+    medals = ["🥇", "🥈", "🥉"]
+    formatted_list = []
+    
+    for idx, item in enumerate(rankings_list, 1):
+        name = item.get("name", "Unknown")
+        score = item.get("score", "0")
+        
+        if idx == 1:
+            emoji = medals[0]
+        elif idx == 2:
+            emoji = medals[1]
+        elif idx == 3:
+            emoji = medals[2]
+        else:
+            emoji = f"`#{idx}`"
+            
+        formatted_list.append(f"{emoji} **{name}** — {score}")
+    
+    full_text = "\n".join(formatted_list) if formatted_list else "Waiting for sync..."
+    
+    # حماية حدود ديسكورد للرسائل الطويلة
+    if len(full_text) > 1000:
+        full_text = full_text[:1000] + "\n...(and more)"
+        
+    embed.add_field(name="🏆 All Players Ranking", value=full_text, inline=False)
+    embed.set_footer(text="Auto-updated via Chrome Extension • Active Mode")
     return embed
 
-@tasks.loop(minutes=5)
-async def auto_update_tracker():
+async def update_discord_message():
     global MESSAGE_ID
-    await bot.wait_until_ready()
-    
     channel = bot.get_channel(TRACKER_CHANNEL_ID)
     if not channel:
         return
 
-    ranking_text = fetch_anoha_data()
-    embed = create_tracker_embed(ranking_text)
-
+    embed = create_tracker_embed(latest_rankings)
     try:
         if MESSAGE_ID:
             msg = await channel.fetch_message(MESSAGE_ID)
@@ -100,14 +65,32 @@ async def auto_update_tracker():
         else:
             msg = await channel.send(embed=embed)
             MESSAGE_ID = msg.id
-    except discord.NotFound:
-        msg = await channel.send(embed=embed)
-        MESSAGE_ID = msg.id
     except Exception as e:
         print(f"[ERROR] {e}")
 
+async def handle_update(request):
+    global latest_rankings
+    try:
+        data = await request.json()
+        latest_rankings = data.get("rankings", [])
+        bot.loop.create_task(update_discord_message())
+        return web.json_response({"status": "success", "count": len(latest_rankings)})
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=400)
+
+async def start_webserver():
+    app = web.Application()
+    app.router.add_post('/update-rank', handle_update)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Webserver running on port {port}")
+
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (Stable & Ready!)")
+    print(f"Logged in as {bot.user}!")
+    bot.loop.create_task(start_webserver())
 
 bot.run(os.getenv("BOT_TOKEN"))
