@@ -2,8 +2,10 @@ import discord
 from discord.ext import commands, tasks
 import datetime
 import os
+import requests
+from bs4 import BeautifulSoup  # مكتبة خفيفة جداً لتحليل الصفحة وسحب كل الجداول
 
-TRACKER_CHANNEL_ID = 1562105330370871407  # ضع أيدي القناة هنا
+TRACKER_CHANNEL_ID = 123456789012345678  # ضع أيدي القناة هنا
 MESSAGE_ID = None
 
 intents = discord.Intents.default()
@@ -20,17 +22,62 @@ class AnohaTradeBot(commands.Bot):
 bot = AnohaTradeBot()
 
 def fetch_anoha_data():
-    return "🥇 **Reconnaissance** - 1122 Points\n🥈 **Ap** - 642 Points\n🥉 **Stall** - 750 Points"
+    try:
+        url = "https://anoha-online.com/trademode"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # هنا بنبحث عن الجداول أو العناصر اللي فيها الترتيب والأسماء في الموقع
+            # (كمثال عام للبحث عن صفوف الجدول أو عناصر الترتيب)
+            rows = soup.find_all('tr') # أو التاج الخاص بالأسماء في الموقع
+            
+            rankings = []
+            medals = ["🥇", "🥈", "🥉"]
+            
+            count = 1
+            for row in rows:
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    name = cols[0].text.strip()
+                    score = cols[1].text.strip()
+                    
+                    if count == 1:
+                        emoji = medals[0]
+                    elif count == 2:
+                        emoji = medals[1]
+                    elif count == 3:
+                        emoji = medals[2]
+                    else:
+                        emoji = f"{count}."
+                        
+                    rankings.append(f"{emoji} **{name}** - {score} Points")
+                    count += 1
+            
+            if rankings:
+                # ديسكورد بيقبل في الـ Embed الواحد لحد 1024 حرف في الـ Field، 
+                # فلو القائمة كبيرة هنقسمها أو نعرضها مرتبة
+                return "\n".join(rankings[:25]) # أول 25 لاعب كمرحلة أولى عشان ما نعديش حدود ديسكورد
+                
+        return "⚠️ Could not fetch live data automatically yet."
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        return "⚠️ Error fetching data from website."
 
 def create_tracker_embed(ranking_data):
     embed = discord.Embed(
         title="📊 Trademode Ranking | Anoha Online",
         url="https://anoha-online.com/trademode",
-        description="Live rankings. Click the title to open the site!",
+        description="Full live rankings fetched automatically. Click the title above to open the site!",
         color=discord.Color.gold(),
         timestamp=datetime.datetime.utcnow()
     )
-    embed.add_field(name="🏆 Top Players Ranking", value=ranking_data, inline=False)
+    
+    embed.add_field(name="🏆 All Players Ranking", value=ranking_data, inline=False)
     embed.set_footer(text="Auto-refreshed every 5 minutes • Stable Mode")
     return embed
 
