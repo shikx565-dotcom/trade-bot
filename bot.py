@@ -1,15 +1,13 @@
 import discord
 from discord.ext import commands, tasks
-import asyncio
 import datetime
+import os
+from DrissionPage import ChromiumPage, ChromiumOptions
 
 # ==========================================
-# 1. إعداد المعرفات والبيانات
+# 1. الإعدادات والمعرفات
 # ==========================================
-# ضع معرف القناة (Channel ID) التي سيتم نشر وتحديث التتبع فيها هنا
-TRACKER_CHANNEL_ID = 1562105330370871407  # استبدل هذا الرقم بـ Channel ID الحقيقي
-
-# متغيّر لحفظ معرف الرسالة المثبتة لكي يتم تعديلها باستمرار
+TRACKER_CHANNEL_ID = 123456789012345678  # ضع أيدي القناة هنا
 MESSAGE_ID = None
 
 intents = discord.Intents.default()
@@ -20,43 +18,83 @@ class AnohaTradeBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # بدء مهمة التحديث التلقائي كل 5 دقائق
         auto_update_tracker.start()
-        # مزامنة أوامر Slash مع الديسكورد
         await self.tree.sync()
 
 bot = AnohaTradeBot()
 
 # ==========================================
-# 2. دالة جلب/تنسيق البيانات (شكل العرض Embed)
+# 2. دالة جلب البيانات الحقيقية وسحب الجدول من الموقع
 # ==========================================
-def create_tracker_embed():
+def fetch_anoha_data():
+    try:
+        co = ChromiumOptions()
+        co.headless(True)  # تشغيل في الخلفية على السحابة
+        co.no_imgs(True)
+        
+        page = ChromiumPage(addr_or_opts=co)
+        page.get("https://anoha-online.com/trademode")
+        
+        # الانتظار ومحاكاة النقرات المتعددة لتجاوز Cloudflare
+        page.wait(3)
+        page.actions.click(100, 100)
+        page.wait(1)
+        page.actions.click(200, 200)
+        page.wait(1)
+        page.actions.click(300, 150)
+        page.wait(4)  # انتظار تحميل البيانات بالكامل بعد التخطي
+        
+        # سحب صفوف الجدول (Rows) الحقيقية من الموقع
+        rows = page.eles('tag:tr')
+        
+        players_list = []
+        for row in rows[1:6]:  # جلب أول 5 مراكز
+            cols = row.eles('tag:td')
+            if len(cols) >= 3:
+                rank = cols[0].text.strip()
+                name = cols[1].text.strip()
+                points = cols[2].text.strip()
+                players_list.append((rank, name, points))
+                
+        page.quit()
+        
+        if not players_list:
+            return None
+            
+        # تنسيق الأسماء مع إيموجيات المراكز
+        formatted_text = ""
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+        
+        for i, item in enumerate(players_list):
+            medal = medals[i] if i < len(medals) else f"#{item[0]}"
+            formatted_text += f"{medal} **{item[1]}** - {item[2]} Points\n"
+            
+        return formatted_text
+
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch data: {e}")
+        return None
+
+def create_tracker_embed(ranking_data):
+    # إضافة رابط الموقع هنا لكي يصبح العنوان قابل للضغط ويفتح الموقع مباشرة
     embed = discord.Embed(
-        title="📊 Thief & Trader Tracker | Anoha Online",
-        description="التحديث المباشر لحالة الصفقات والرانك الحالي داخل اللعبة.",
+        title="📊 Trademode Ranking | Anoha Online",
+        url="https://anoha-online.com/trademode",
+        description="Live rankings fetched directly from the official website. Click the title above to open the site!",
         color=discord.Color.gold(),
         timestamp=datetime.datetime.utcnow()
     )
     
-    # قسم التجار (Traders)
-    embed.add_field(
-        name="🐪 أعلى التجار (Traders)",
-        value="1. **Player1** - 15,000 Gold\n2. **Player2** - 12,300 Gold\n3. **Player3** - 9,800 Gold",
-        inline=False
-    )
-    
-    # قسم قطاع الطرق (Thieves)
-    embed.add_field(
-        name="⚔️ أعلى القطاع (Thieves)",
-        value="1. **Shadow** - 22 Kills\n2. **HunterX** - 18 Kills\n3. **Rogue** - 14 Kills",
-        inline=False
-    )
-    
-    embed.set_footer(text="يتم التحديث تلقائياً كل 5 دقائق • Anoha Online System")
+    if ranking_data:
+        embed.add_field(name="🏆 Top Players Ranking", value=ranking_data, inline=False)
+    else:
+        embed.add_field(name="⚠️ Status", value="Waiting for website data sync...", inline=False)
+        
+    embed.set_footer(text="Auto-refreshed every 5 minutes • Cloudflare Bypassed")
     return embed
 
 # ==========================================
-# 3. مهمة التحديث التلقائي كل 5 دقائق (Edit Message)
+# 3. مهمة التحديث التلقائي كل 5 دقائق
 # ==========================================
 @tasks.loop(minutes=5)
 async def auto_update_tracker():
@@ -65,42 +103,32 @@ async def auto_update_tracker():
     
     channel = bot.get_channel(TRACKER_CHANNEL_ID)
     if not channel:
-        print(f"لم يتم العثور على القناة المحددة ID: {TRACKER_CHANNEL_ID}")
         return
 
-    embed = create_tracker_embed()
+    ranking_text = fetch_anoha_data()
+    embed = create_tracker_embed(ranking_text)
 
     try:
-        # إذا كانت الرسالة مرسلة من قبل، يتم تعديلها فقط
         if MESSAGE_ID:
             msg = await channel.fetch_message(MESSAGE_ID)
             await msg.edit(embed=embed)
-            print("[INFO] تم تعديل نفس الرسالة بنجاح.")
+            print("[SUCCESS] Message updated.")
         else:
-            # أول مرة: إرسال الرسالة وحفظ الـ ID الخاص بها
             msg = await channel.send(embed=embed)
             MESSAGE_ID = msg.id
-            print(f"[INFO] تم إرسال الرسالة الأولى وحفظ معرفها: {MESSAGE_ID}")
+            print(f"[SUCCESS] Initial message sent: {MESSAGE_ID}")
     except discord.NotFound:
-        # في حال تم حذف الرسالة يدوياً من القناة، يرسل واحدة جديدة ويحفظ ID الجديد
         msg = await channel.send(embed=embed)
         MESSAGE_ID = msg.id
-        print("[WARNING] الرسالة السابقة حُذفت، تم إرسال رسالة جديدة.")
     except Exception as e:
-        print(f"[ERROR] خطأ أثناء تحديث الرسالة: {e}")
+        print(f"[ERROR] {e}")
 
-# ==========================================
-# 4. أحداث البوت وأمر الحصول على الشارة
-# ==========================================
 @bot.event
 async def on_ready():
-    print(f"Logged in successfully as {bot.user} (Ready to serve the Guild Master!)")
+    print(f"Logged in as {bot.user} (Clickable Embed Ready!)")
 
-# أمر Slash تفاعلي لتسهيل الحصول على Active Developer Badge
-@bot.tree.command(name="ping", description="أمر تفاعلي لاختبار البوت وتفعيل شارة المطور")
+@bot.tree.command(name="ping", description="Test bot status")
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("Pong! 🏓 البوت شغال بنجاح والتحديثات مستمرة كل 5 دقائق.")
+    await interaction.response.send_message("Bot is online and click-to-open link is active!")
 
-# تشغيل البوت عبر توكن البيئة
-import os
 bot.run(os.getenv("BOT_TOKEN"))
