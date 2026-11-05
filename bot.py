@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 import datetime
 import os
 
-TRACKER_CHANNEL_ID = 1562105330370871407  # ضع أيدي القناة هنا
+TRACKER_CHANNEL_ID = 123456789012345678  # ضع أيدي القناة هنا
 MESSAGE_ID = None
 
 intents = discord.Intents.default()
@@ -26,7 +26,7 @@ def create_tracker_embed(ranking_data):
     embed = discord.Embed(
         title="📊 Trademode Ranking | Anoha Online",
         url="https://anoha-online.com/trademode",
-        description="Live rankings fetched directly from the official website. Click the title above to open the site!",
+        description="Live rankings. Click the title to open the site!",
         color=discord.Color.gold(),
         timestamp=datetime.datetime.utcnow()
     )
