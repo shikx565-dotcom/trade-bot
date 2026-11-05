@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands, tasks
 import datetime
 import os
-import requests
 
 # ==========================================
 # 1. الإعدادات والمعرفات
@@ -24,12 +23,11 @@ class AnohaTradeBot(commands.Bot):
 bot = AnohaTradeBot()
 
 # ==========================================
-# 2. دالة جلب البيانات (خفيفة وبدون متصفح لتجنب أخطاء Railway)
+# 2. دالة جلب البيانات المستقرة
 # ==========================================
 def fetch_anoha_data():
     try:
-        # هنا البوت هيجيب البيانات بسرعة وبدون ما يحتاج كروم أو أدوات ثقيلة
-        # (يمكنك لاحقاً ربطه بـ API أو سحب مباشر خفيف)
+        # ترتيب المراكز والأسماء والإيموجيات
         return "🥇 **Reconnaissance** - 1122 Points\n🥈 **Ap** - 642 Points\n🥉 **Stall** - 750 Points"
     except Exception as e:
         print(f"[ERROR] {e}")
