@@ -2,14 +2,13 @@ import os
 from flask import Flask
 from threading import Thread
 import discord
-from discord import app_commands
+from discord.ext import commands
 
-# تشغيل سيرفر ويب خفيف (عشان Railway يستقبل طلبات الإضافة)
+# 1. سيرفر الويب عشان Railway
 app = Flask('')
 
 @app.route('/')
 def home():
-    print("تم تلقي طلب بنجاح!")
     return "Bot is running!"
 
 def run():
@@ -19,23 +18,26 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# إعداد بوت ديسكورد وأوامر Slash Command
+# 2. إعداد بوت ديسكورد باستخدام commands.Bot
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
-tree = app_commands.CommandTree(client)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-@client.event
+@bot.event
 async def on_ready():
-    await tree.sync()  # مزامنة أمر الـ Slash مع ديسكورد أوتوماتيك
-    print(f'✅ تسجيل الدخول بنجاح باسم: {client.user}')
-    print('✅ تم مزامنة أمر /badge بنجاح!')
+    print(f'Logged in as {bot.user.name}')
+    try:
+        # مزامنة الأوامر مع ديسكورد فوراً
+        synced = await bot.tree.sync()
+        print(f"✅ تم مزامنة {len(synced)} أمر (Slash Commands) بنجاح!")
+    except Exception as e:
+        print(f"خطأ في مزامنة الأوامر: {e}")
 
-@tree.command(name="badge", description="الحصول على تفاعل الشارة")
+# تعريف أمر الشارة
+@bot.tree.command(name="badge", description="الحصول على تفاعل الشارة")
 async def badge(interaction: discord.Interaction):
     await interaction.response.send_message("🎉 تم تفاعل البوت بنجاح! توجه الآن لموقع ديسكورد لاستلام الشارة.")
 
-# تشغيل السيرفر والبوت معاً
+# تشغيل السيرفر والبوت
 if __name__ == "__main__":
     keep_alive()
-    TOKEN = os.environ.get('DISCORD_TOKEN')
-    client.run(TOKEN)
+    bot.run(os.environ.get('DISCORD_TOKEN'))
